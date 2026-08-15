@@ -1,26 +1,69 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --bg: #F6F7F9;
+  --surface: #FFFFFF;
+  --surface-2: #FBFBFD;
+  --ink: #12141D;
+  --muted: #5B6472;
+  --faint: #8B93A1;
+  --line: #E7E9EE;
+  --brand: #4C46E0;
+  --brand-ink: #2E2A8A;
+  --brand-soft: #EEEDFC;
+
+  /* escrow states */
+  --held-text: #B26A00;
+  --held-bg: #FDF3E1;
+  --held-border: #F4DFB8;
+  --released-text: #0E7C5A;
+  --released-bg: #E6F6EF;
+  --released-border: #BFE7D5;
+  --declined-text: #C4362F;
+  --declined-bg: #FBEBEA;
+  --declined-border: #F3CFCC;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-line: var(--line);
+  --color-brand: var(--brand);
+  --color-brand-ink: var(--brand-ink);
+  --color-brand-soft: var(--brand-soft);
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --color-held-text: var(--held-text);
+  --color-held-bg: var(--held-bg);
+  --color-held-border: var(--held-border);
+  --color-released-text: var(--released-text);
+  --color-released-bg: var(--released-bg);
+  --color-released-border: var(--released-border);
+  --color-declined-text: var(--declined-text);
+  --color-declined-bg: var(--declined-bg);
+  --color-declined-border: var(--declined-border);
+
+  --font-display: "Space Grotesk", sans-serif;
+  --font-body: "Inter", sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+
+  --radius-card: 16px;
+  --radius-control: 10px;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-body);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
