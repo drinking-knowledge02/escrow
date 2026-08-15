@@ -5,6 +5,10 @@ export interface RainCard {
   id: string;
   last4: string;
   status?: string;
+  expirationMonth?: string | number;
+  expirationYear?: string | number;
+  expiryMonth?: string | number;
+  expiryYear?: string | number;
   limit?: { amount: number; frequency?: string };
   encryptedPan?: { data: string; iv: string } | string;
   encryptedCvc?: { data: string; iv: string } | string;
@@ -160,15 +164,30 @@ export async function cancelCard(cardId: string): Promise<void> {
   });
 }
 
-export function revealLast4(card: RainCard, session: RainSession): string {
-  const pan = card.encryptedPan;
-  if (!pan || typeof pan === "string" || !pan.data || !pan.iv) {
-    return card.last4 ?? "";
+function decryptField(
+  field: RainCard["encryptedPan"],
+  session: RainSession,
+): string | null {
+  if (!field || typeof field === "string" || !field.data || !field.iv) {
+    return null;
   }
   try {
-    const decrypted = decryptSecret(pan.data, pan.iv, session.secretKey);
-    return decrypted.slice(-4);
+    return decryptSecret(field.data, field.iv, session.secretKey);
   } catch {
-    return card.last4 ?? "";
+    return null;
   }
+}
+
+export function revealPan(card: RainCard, session: RainSession): string {
+  return decryptField(card.encryptedPan, session) ?? "";
+}
+
+export function revealCvc(card: RainCard, session: RainSession): string {
+  return decryptField(card.encryptedCvc, session) ?? "";
+}
+
+export function revealLast4(card: RainCard, session: RainSession): string {
+  const pan = revealPan(card, session);
+  if (pan) return pan.slice(-4);
+  return card.last4 ?? "";
 }

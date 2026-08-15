@@ -20,12 +20,11 @@ export default function ShopPage() {
   const [intent, setIntent] = useState<ParsedIntent | null>(null);
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
-  const chatEndRef = useRef<HTMLDivElement>(null);
+  const [storeName, setStoreName] = useState("Shopify Catalog");
+  const [queryLabel, setQueryLabel] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  const lastAgent = [...messages].reverse().find((m) => m.role === "agent");
 
   async function handleSend() {
     const msg = input.trim();
@@ -34,206 +33,154 @@ export default function ShopPage() {
     setMessages((prev) => [...prev, { role: "user", text: msg }]);
     setLoading(true);
 
-    const parseRes = await fetch("/api/agent/parse", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message: msg }),
-    });
-    const parsed: ParsedIntent = await parseRes.json();
-    setIntent(parsed);
+    try {
+      const parseRes = await fetch("/api/agent/parse", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: msg }),
+      });
+      const parsed = (await parseRes.json()) as ParsedIntent;
+      if (!parsed?.query) {
+        throw new Error("Could not parse that request");
+      }
+      setIntent(parsed);
+      setQueryLabel(parsed.query);
 
-    const searchRes = await fetch("/api/store/search", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ query: parsed.query, budget: parsed.budget }),
-    });
-    const { products: results } = await searchRes.json();
-    setProducts(results);
-    if (results.length > 0) setSelectedId(results[0].id);
+      const searchRes = await fetch("/api/store/search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: parsed.query, budget: parsed.budget }),
+      });
+      const searchBody = await searchRes.text();
+      if (!searchBody) {
+        throw new Error("Store search returned an empty response");
+      }
+      const searchJson = JSON.parse(searchBody) as {
+        products?: Product[];
+        error?: string;
+        storeName?: string;
+      };
+      if (searchJson.error && (!searchJson.products || searchJson.products.length === 0)) {
+        throw new Error(searchJson.error);
+      }
+      const results = Array.isArray(searchJson.products) ? searchJson.products : [];
+      const vendors = Array.from(new Set(results.map((p) => p.vendor).filter(Boolean))) as string[];
+      const merchant =
+        vendors.length === 1
+          ? vendors[0]
+          : vendors.length > 1
+            ? `${vendors.length} Shopify stores`
+            : searchJson.storeName || "Shopify Catalog";
+      setStoreName(merchant);
+      setProducts(results);
+      if (results.length > 0) setSelectedId(results[0].id);
 
-    const conditionLabel =
-      parsed.releaseCondition === "on_delivery"
-        ? "Release on delivery"
-        : parsed.releaseCondition === "on_inspection"
-        ? "Release on inspection"
-        : parsed.releaseCondition;
+      const conditionLabel =
+        parsed.releaseCondition === "on_delivery"
+          ? "Release on delivery"
+          : parsed.releaseCondition === "on_inspection"
+            ? "Release on inspection"
+            : parsed.releaseCondition;
 
-    setMessages((prev) => [
-      ...prev,
-      {
-        role: "agent",
-        text: `Found ${results.length} match${results.length !== 1 ? "es" : ""} within your budget. Here's what I've locked in:`,
-        chips: [
-          { label: "Heirloom Home", type: "merchant" },
-          { label: `≤ $${parsed.budget.toFixed(2)}`, type: "cap" },
-          { label: conditionLabel, type: "condition" },
-        ],
-      },
-    ]);
-    setLoading(false);
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "agent",
+          text: `Found ${results.length} match${results.length !== 1 ? "es" : ""} for “${parsed.query}”.`,
+          chips: [
+            { label: merchant, type: "merchant" },
+            { label: `≤ $${Number(parsed.budget || 0).toFixed(2)}`, type: "cap" },
+            { label: conditionLabel, type: "condition" },
+          ],
+        },
+      ]);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Search failed";
+      setMessages((prev) => [
+        ...prev,
+        { role: "agent", text: `I couldn't complete that search. ${message}` },
+      ]);
+    } finally {
+      setLoading(false);
+      inputRef.current?.focus();
+    }
   }
 
   async function handleConfirm() {
     const product = products.find((p) => p.id === selectedId);
     if (!product || !intent) return;
     setCreating(true);
-
-    const res = await fetch("/api/orders", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: product.name,
-        meta: product.meta,
-        price: product.price,
-        thumbSeed: product.thumbSeed,
-        merchant: "Heirloom Home",
-        releaseCondition: intent.releaseCondition,
-      }),
-    });
-    const { order } = await res.json();
-    router.push(`/escrow/${order.id}`);
+    try {
+      const res = await fetch("/api/orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: product.name,
+          meta: product.meta,
+          price: product.price,
+          thumbSeed: product.thumbSeed,
+          productId: product.id,
+          variantId: product.variantId,
+          imageUrl: product.imageUrl,
+          vendor: product.vendor,
+          currency: product.currency,
+          checkoutUrl: product.checkoutUrl,
+          productUrl: product.productUrl,
+          sellerDomain: product.sellerDomain,
+          merchant: product.vendor || storeName,
+          releaseCondition: intent.releaseCondition,
+        }),
+      });
+      const payload = await res.json();
+      if (!res.ok || !payload.order) {
+        throw new Error(payload.error || "Checkout failed");
+      }
+      router.push(`/escrow/${payload.order.id}`);
+    } catch (error) {
+      setCreating(false);
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "agent",
+          text:
+            error instanceof Error
+              ? `Checkout failed: ${error.message}`
+              : "Checkout failed",
+        },
+      ]);
+    }
   }
 
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
   return (
-    <div className="flex gap-6 h-[calc(100vh-64px)]">
-      {/* Chat Panel */}
-      <div className="w-[340px] shrink-0 flex flex-col bg-surface rounded-[16px] border border-line shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_24px_rgba(0,0,0,0.06)]">
-        <div className="px-5 pt-5 pb-3 border-b border-line">
-          <h2 className="text-sm font-semibold text-ink" style={{ fontFamily: "var(--font-display)" }}>
-            Shop with your agent
-          </h2>
-          <p className="text-xs text-faint mt-0.5">Describe what you want, set your terms</p>
-        </div>
-
-        <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
-          {messages.length === 0 && (
-            <div className="text-center py-12">
-              <div className="w-10 h-10 mx-auto mb-3 rounded-full bg-brand-soft flex items-center justify-center">
-                <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="var(--brand)" strokeWidth="1.5">
-                  <path d="M3 10L5.5 7.5L8 10" strokeLinecap="round" strokeLinejoin="round"/>
-                  <path d="M5.5 7.5V15" strokeLinecap="round"/>
-                  <path d="M12 5L14.5 7.5L17 5" strokeLinecap="round" strokeLinejoin="round"/>
-                  <path d="M14.5 7.5V15" strokeLinecap="round"/>
-                </svg>
-              </div>
-              <p className="text-sm text-muted">Tell me what you&apos;re looking for</p>
-              <p className="text-xs text-faint mt-1">e.g. &quot;matte black task lamp under $130, pay on delivery&quot;</p>
-            </div>
-          )}
-
-          {messages.map((msg, i) => (
-            <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
-              <div
-                className={`max-w-[85%] px-3.5 py-2.5 rounded-[14px] text-sm leading-relaxed ${
-                  msg.role === "user"
-                    ? "bg-brand text-white"
-                    : "bg-surface-2 text-ink border border-line"
-                }`}
-              >
-                <p>{msg.text}</p>
-                {msg.chips && (
-                  <div className="flex flex-wrap gap-1.5 mt-2">
-                    {msg.chips.map((chip, ci) => (
-                      <span
-                        key={ci}
-                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-[6px] text-xs font-medium"
-                        style={{
-                          fontFamily: chip.type === "cap" ? "var(--font-mono)" : undefined,
-                          backgroundColor:
-                            chip.type === "merchant" ? "var(--brand-soft)" :
-                            chip.type === "cap" ? "var(--held-bg)" :
-                            "var(--released-bg)",
-                          color:
-                            chip.type === "merchant" ? "var(--brand-ink)" :
-                            chip.type === "cap" ? "var(--held-text)" :
-                            "var(--released-text)",
-                        }}
-                      >
-                        {chip.type === "merchant" && (
-                          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.2">
-                            <rect x="1" y="1" width="8" height="8" rx="1.5" />
-                          </svg>
-                        )}
-                        {chip.type === "cap" && (
-                          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.2">
-                            <circle cx="5" cy="5" r="3.5" />
-                          </svg>
-                        )}
-                        {chip.type === "condition" && (
-                          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.2">
-                            <path d="M3 5L4.5 6.5L7 3.5" strokeLinecap="round" strokeLinejoin="round" />
-                          </svg>
-                        )}
-                        {chip.label}
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          ))}
-
-          {loading && (
-            <div className="flex justify-start">
-              <div className="bg-surface-2 border border-line px-4 py-3 rounded-[14px]">
-                <div className="flex gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-faint animate-bounce" style={{ animationDelay: "0ms" }} />
-                  <span className="w-1.5 h-1.5 rounded-full bg-faint animate-bounce" style={{ animationDelay: "150ms" }} />
-                  <span className="w-1.5 h-1.5 rounded-full bg-faint animate-bounce" style={{ animationDelay: "300ms" }} />
-                </div>
-              </div>
-            </div>
-          )}
-
-          <div ref={chatEndRef} />
-        </div>
-
-        <div className="p-3 border-t border-line">
-          <div className="flex gap-2">
-            <input
-              ref={inputRef}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleSend()}
-              placeholder="What are you looking for?"
-              className="flex-1 px-3.5 py-2.5 text-sm bg-surface-2 border border-line rounded-[10px] text-ink placeholder:text-faint outline-none focus:border-brand focus:ring-1 focus:ring-brand/20 transition-colors"
-            />
-            <button
-              onClick={handleSend}
-              disabled={!input.trim() || loading}
-              className="w-10 h-10 flex items-center justify-center rounded-[10px] bg-brand text-white disabled:opacity-40 hover:bg-brand-ink transition-colors shrink-0"
-            >
-              <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-                <path d="M2.25 9L15.75 2.25L12.75 15.75L9 10.5L2.25 9Z" fill="currentColor" />
-              </svg>
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Results Panel */}
-      <div className="flex-1 flex flex-col min-w-0">
+    <div className="h-full flex flex-col bg-bg">
+      <div className="flex-1 min-h-0 overflow-y-auto">
         {products.length > 0 ? (
-          <>
-            <div className="flex items-center justify-between mb-5">
+          <div className="max-w-[920px] mx-auto px-6 py-6">
+            <div className="flex items-end justify-between gap-4 mb-4">
               <div>
-                <span className="text-sm text-muted">
-                  {products.length} match{products.length !== 1 ? "es" : ""} · from{" "}
-                  <span className="font-medium text-ink">Heirloom Home</span>
-                </span>
+                <h1 className="text-[22px] font-semibold text-ink tracking-[-0.02em]">
+                  {queryLabel ? `Results for “${queryLabel}”` : "Search results"}
+                </h1>
+                <p className="text-sm text-muted mt-1">
+                  {products.length} product{products.length !== 1 ? "s" : ""} from {storeName}
+                </p>
               </div>
               {selectedId && (
                 <button
                   onClick={handleConfirm}
                   disabled={creating}
-                  className="px-5 py-2.5 bg-brand text-white text-sm font-medium rounded-[10px] hover:bg-brand-ink transition-colors disabled:opacity-50"
+                  className="px-5 py-2.5 bg-brand text-white text-sm font-medium rounded-[10px] hover:bg-brand-ink transition-colors disabled:opacity-50 shrink-0"
                 >
-                  {creating ? "Creating order…" : "Confirm & checkout →"}
+                  {creating ? "Minting Rain card…" : "Checkout with Rain"}
                 </button>
               )}
             </div>
 
-            <div className="grid grid-cols-2 xl:grid-cols-3 gap-4">
+            <div className="bg-surface rounded-[12px] border border-line overflow-hidden shadow-[0_1px_2px_rgba(48,32,12,0.04)]">
               {products.map((product, i) => (
                 <ProductCard
                   key={product.id}
@@ -244,21 +191,75 @@ export default function ShopPage() {
                 />
               ))}
             </div>
-          </>
+          </div>
         ) : (
-          <div className="flex-1 flex items-center justify-center">
-            <div className="text-center">
-              <div className="w-16 h-16 mx-auto mb-4 rounded-[16px] bg-surface-2 border border-line flex items-center justify-center">
-                <svg width="28" height="28" viewBox="0 0 28 28" fill="none" stroke="var(--faint)" strokeWidth="1.5">
-                  <circle cx="12" cy="12" r="8" />
-                  <path d="M18 18L24 24" strokeLinecap="round" />
-                </svg>
-              </div>
-              <p className="text-muted text-sm">Products will appear here</p>
-              <p className="text-faint text-xs mt-1">Start a conversation to search the store</p>
+          <div className="h-full flex items-center justify-center px-6">
+            <div className="text-center max-w-md">
+              <p className="text-[22px] font-semibold text-ink tracking-[-0.02em]">Search Shopify</p>
+              <p className="text-sm text-muted mt-2">
+                Type what you want below. Live catalog results fill this page, then checkout with a Rain card.
+              </p>
+              {lastAgent && (
+                <p className="text-sm text-faint mt-4">{lastAgent.text}</p>
+              )}
             </div>
           </div>
         )}
+      </div>
+
+      <div className="shrink-0 border-t border-line bg-surface/90 backdrop-blur-sm">
+        {lastAgent?.chips && (
+          <div className="max-w-[920px] mx-auto px-6 pt-3 flex flex-wrap gap-1.5">
+            {lastAgent.chips.map((chip, ci) => (
+              <span
+                key={ci}
+                className="inline-flex items-center px-2 py-0.5 rounded-[6px] text-xs font-medium"
+                style={{
+                  fontFamily: chip.type === "cap" ? "var(--font-mono)" : undefined,
+                  backgroundColor:
+                    chip.type === "merchant" ? "var(--brand-soft)" :
+                    chip.type === "cap" ? "var(--held-bg)" :
+                    "var(--released-bg)",
+                  color:
+                    chip.type === "merchant" ? "var(--brand-ink)" :
+                    chip.type === "cap" ? "var(--held-text)" :
+                    "var(--released-text)",
+                }}
+              >
+                {chip.label}
+              </span>
+            ))}
+          </div>
+        )}
+
+        <form
+          className="max-w-[920px] mx-auto px-6 py-4"
+          onSubmit={(e) => {
+            e.preventDefault();
+            handleSend();
+          }}
+        >
+          <div className="flex items-center gap-2 rounded-[14px] border border-line bg-bg px-3 py-2 shadow-[0_8px_24px_rgba(48,32,12,0.08)]">
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="var(--faint)" strokeWidth="1.6" className="shrink-0 ml-1">
+              <circle cx="8" cy="8" r="5.25" />
+              <path d="M12 12L16 16" strokeLinecap="round" />
+            </svg>
+            <input
+              ref={inputRef}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder="Search products, e.g. wireless headphones under $100"
+              className="flex-1 px-2 py-2.5 text-[15px] bg-transparent text-ink placeholder:text-faint outline-none"
+            />
+            <button
+              type="submit"
+              disabled={!input.trim() || loading}
+              className="h-10 px-4 flex items-center justify-center rounded-[10px] bg-brand text-white text-sm font-medium disabled:opacity-40 hover:bg-brand-ink transition-colors shrink-0"
+            >
+              {loading ? "Searching…" : "Search"}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );

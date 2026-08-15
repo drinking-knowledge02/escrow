@@ -35,6 +35,7 @@ export default function EscrowDashboard() {
   }
 
   return (
+    <div className="h-full overflow-auto p-8">
     <div className="max-w-5xl mx-auto">
       <div className="flex items-center justify-between mb-6">
         <h1
@@ -93,6 +94,13 @@ export default function EscrowDashboard() {
               </tr>
             </thead>
             <tbody>
+              {orders.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="px-5 py-10 text-center text-sm text-muted">
+                    No live escrow orders yet. Search Shopify and checkout with Rain.
+                  </td>
+                </tr>
+              )}
               {orders.map((order) => (
                 <tr
                   key={order.id}
@@ -100,8 +108,13 @@ export default function EscrowDashboard() {
                 >
                   <td className="px-5 py-4">
                     <Link href={`/escrow/${order.id}`} className="flex items-center gap-3 group">
-                      <div className="w-10 h-10 rounded-[8px] bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center text-base shrink-0">
-                        🛍️
+                      <div className="w-10 h-10 rounded-[8px] bg-gradient-to-br from-gray-100 to-gray-200 overflow-hidden flex items-center justify-center text-base shrink-0">
+                        {order.item.imageUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={order.item.imageUrl} alt="" className="h-full w-full object-cover" />
+                        ) : (
+                          "🛍️"
+                        )}
                       </div>
                       <div>
                         <p className="text-sm font-medium text-ink group-hover:text-brand transition-colors">
@@ -135,6 +148,7 @@ export default function EscrowDashboard() {
           </table>
         </div>
       </div>
+    </div>
     </div>
   );
 }

@@ -14,29 +14,27 @@ const bottomItems = [
   { href: "/settings", label: "Settings", icon: SettingsIcon },
 ];
 
-export function Sidebar() {
+export function Sidebar({ onHide }: { onHide: () => void }) {
   const pathname = usePathname();
 
   return (
-    <aside className="w-[210px] h-full flex flex-col border-r border-line bg-surface shrink-0">
-      {/* Wordmark */}
-      <div className="px-5 pt-6 pb-8 flex items-center gap-2.5">
-        <div className="w-8 h-8 rounded-[10px] bg-brand flex items-center justify-center">
-          <svg width="16" height="18" viewBox="0 0 16 18" fill="none">
-            <rect x="4" y="1" width="8" height="10" rx="4" stroke="white" strokeWidth="2" fill="none" />
-            <rect x="2" y="9" width="12" height="8" rx="2" fill="white" />
-          </svg>
-        </div>
-        <span
-          className="text-xl tracking-[-0.02em] text-ink"
-          style={{ fontFamily: "var(--font-display)", fontWeight: 700 }}
+    <aside className="w-[210px] h-full flex flex-col border-r border-line bg-bg shrink-0">
+      <div className="flex items-center justify-end px-3 pt-4 pb-1">
+        <button
+          type="button"
+          onClick={onHide}
+          className="h-8 w-8 flex items-center justify-center rounded-[8px] text-faint hover:text-ink hover:bg-surface-2 transition-colors"
+          aria-label="Hide sidebar"
+          title="Hide sidebar"
         >
-          Latch
-        </span>
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+            <rect x="1.75" y="2.5" width="12.5" height="11" rx="1.75" />
+            <path d="M6.5 2.5V13.5" />
+            <path d="M4.25 8H2.5" />
+          </svg>
+        </button>
       </div>
-
-      {/* Main nav */}
-      <nav className="flex-1 flex flex-col px-3 gap-0.5">
+      <nav className="flex-1 flex flex-col px-3 pt-1 gap-0.5">
         {navItems.map((item) => {
           const active = pathname === item.href || pathname.startsWith(item.href + "/");
           return (
@@ -75,19 +73,6 @@ export function Sidebar() {
           );
         })}
       </nav>
-
-      {/* User chip */}
-      <div className="px-3 pb-4">
-        <div className="flex items-center gap-3 px-3 py-2.5 rounded-[10px] bg-surface-2 border border-line">
-          <div className="w-7 h-7 rounded-full bg-brand-soft flex items-center justify-center text-xs font-semibold text-brand-ink">
-            M
-          </div>
-          <div className="flex flex-col min-w-0">
-            <span className="text-sm font-medium text-ink truncate">Mani</span>
-            <span className="text-xs text-faint truncate">Builder</span>
-          </div>
-        </div>
-      </div>
     </aside>
   );
 }

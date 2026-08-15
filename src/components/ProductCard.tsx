@@ -2,27 +2,12 @@
 
 import type { Product } from "@/lib/types";
 
-const GRADIENTS: Record<string, string> = {
-  "lamp-black": "from-gray-800 to-gray-900",
-  "lamp-brass": "from-amber-200 to-yellow-300",
-  "lamp-ceramic": "from-stone-100 to-stone-200",
-  organizer: "from-amber-700 to-amber-800",
-  pourover: "from-stone-50 to-stone-100",
-  blanket: "from-orange-50 to-amber-100",
-  planter: "from-gray-400 to-gray-500",
-  shelf: "from-amber-100 to-orange-200",
-};
-
-const ICONS: Record<string, string> = {
-  "lamp-black": "💡",
-  "lamp-brass": "🪔",
-  "lamp-ceramic": "🏺",
-  organizer: "📦",
-  pourover: "☕",
-  blanket: "🧣",
-  planter: "🪴",
-  shelf: "📚",
-};
+function formatPrice(product: Product): string {
+  if (product.currency && product.currency !== "USD") {
+    return `${product.currency} ${product.price.toFixed(2)}`;
+  }
+  return `$${product.price.toFixed(2)}`;
+}
 
 export function ProductCard({
   product,
@@ -38,45 +23,43 @@ export function ProductCard({
   return (
     <button
       onClick={onSelect}
-      className={`group relative text-left bg-surface rounded-[16px] border-2 transition-all overflow-hidden ${
-        selected
-          ? "border-brand shadow-[0_0_0_3px_var(--brand-soft)]"
-          : "border-line hover:border-muted/30"
+      className={`w-full text-left px-4 py-3.5 flex items-center gap-4 border-b border-line last:border-b-0 transition-colors ${
+        selected ? "bg-brand-soft/70" : "hover:bg-surface-2/80"
       }`}
     >
-      {bestMatch && (
-        <span className="absolute top-3 right-3 z-10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-brand text-white rounded-[6px]">
-          Best match
-        </span>
-      )}
-
-      {/* Thumbnail placeholder */}
-      <div
-        className={`h-36 bg-gradient-to-br ${GRADIENTS[product.thumbSeed] || "from-gray-100 to-gray-200"} flex items-center justify-center`}
-      >
-        <span className="text-4xl opacity-60">{ICONS[product.thumbSeed] || "🛍️"}</span>
+      <div className="w-[88px] h-[88px] rounded-[8px] bg-[#F6F6F7] border border-line overflow-hidden flex items-center justify-center shrink-0">
+        {product.imageUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={product.imageUrl} alt={product.name} className="h-full w-full object-contain" />
+        ) : (
+          <span className="text-2xl opacity-40">🛍️</span>
+        )}
       </div>
 
-      <div className="p-4">
-        <h3 className="text-sm font-semibold text-ink leading-tight">{product.name}</h3>
-        <p className="text-xs text-faint mt-1">{product.meta}</p>
-        <div className="flex items-center justify-between mt-3">
-          <span
-            className="text-sm font-medium text-ink"
-            style={{ fontFamily: "var(--font-mono)" }}
-          >
-            ${product.price.toFixed(2)}
-          </span>
-          <span
-            className={`text-xs font-medium px-2.5 py-1 rounded-[8px] transition-colors ${
-              selected
-                ? "bg-brand text-white"
-                : "bg-surface-2 text-muted group-hover:bg-brand-soft group-hover:text-brand-ink"
-            }`}
-          >
-            {selected ? "Selected" : "Pick"}
-          </span>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-start gap-2">
+          <h3 className="text-[15px] font-medium text-ink leading-snug line-clamp-2">{product.name}</h3>
+          {bestMatch && (
+            <span className="shrink-0 mt-0.5 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-brand text-white rounded-[4px]">
+              Best
+            </span>
+          )}
         </div>
+        {product.vendor && (
+          <p className="text-[13px] text-muted mt-1">
+            Sold by {product.vendor}
+          </p>
+        )}
+        {product.meta && (
+          <p className="text-[12px] text-faint mt-0.5 line-clamp-1">{product.meta}</p>
+        )}
+      </div>
+
+      <div className="shrink-0 text-right pl-4">
+        <p className="text-[15px] font-semibold text-ink tabular-nums">{formatPrice(product)}</p>
+        <p className={`text-[12px] mt-1 ${selected ? "text-brand-ink font-medium" : "text-faint"}`}>
+          {selected ? "Selected" : "Select"}
+        </p>
       </div>
     </button>
   );

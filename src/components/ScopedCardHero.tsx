@@ -61,9 +61,35 @@ export function ScopedCardHero({ order }: { order: Order }) {
 
       {/* Card number */}
       <div className="mb-6" style={{ fontFamily: "var(--font-mono)" }}>
-        <span className="text-lg tracking-[0.15em] opacity-60">•••• •••• ••••</span>{" "}
-        <span className="text-lg tracking-[0.15em]">{order.card.last4}</span>
+        {order.card.pan ? (
+          <span className="text-lg tracking-[0.18em]">
+            {order.card.pan.replace(/(.{4})/g, "$1 ").trim()}
+          </span>
+        ) : (
+          <>
+            <span className="text-lg tracking-[0.15em] opacity-60">•••• •••• ••••</span>{" "}
+            <span className="text-lg tracking-[0.15em]">{order.card.last4}</span>
+          </>
+        )}
       </div>
+      {(order.card.expiryMonth || order.card.cvc) && (
+        <div className="flex gap-6 mb-5 text-xs opacity-90" style={{ fontFamily: "var(--font-mono)" }}>
+          {order.card.expiryMonth && (
+            <div>
+              <p className="uppercase tracking-wide opacity-70 mb-0.5">Exp</p>
+              <p>
+                {order.card.expiryMonth}/{String(order.card.expiryYear || "").slice(-2)}
+              </p>
+            </div>
+          )}
+          {order.card.cvc && (
+            <div>
+              <p className="uppercase tracking-wide opacity-70 mb-0.5">CVC</p>
+              <p>{order.card.cvc}</p>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Scope row */}
       <div

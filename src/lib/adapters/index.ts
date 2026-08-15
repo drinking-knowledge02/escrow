@@ -1,9 +1,8 @@
-import { createMockCardAdapter, type CardAdapter } from "./card";
-import { createMockDiscoveryAdapter, type DiscoveryAdapter } from "./discovery";
-import { createMockCheckoutAdapter, type CheckoutAdapter } from "./checkout";
-import { createMockAgentAdapter, type AgentAdapter } from "./agent";
-
-const useMocks = process.env.USE_MOCKS !== "false";
+import { createRealCardAdapter, type CardAdapter } from "./card";
+import { createRealDiscoveryAdapter, type DiscoveryAdapter } from "./discovery";
+import { createRealCheckoutAdapter, type CheckoutAdapter } from "./checkout";
+import { createOpenAIAgentAdapter, type AgentAdapter } from "./agent";
+import { isEnvSet } from "../env";
 
 let _cardAdapter: CardAdapter | null = null;
 let _discoveryAdapter: DiscoveryAdapter | null = null;
@@ -12,49 +11,39 @@ let _agentAdapter: AgentAdapter | null = null;
 
 export function getCardAdapter(): CardAdapter {
   if (_cardAdapter) return _cardAdapter;
-  if (useMocks || !process.env.RAIN_API_KEY) {
-    console.log("[adapters] Using mock card adapter");
-    _cardAdapter = createMockCardAdapter();
-  } else {
-    console.log("[adapters] Using REAL Rain card adapter");
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { createRealCardAdapter } = require("./card-real");
-    _cardAdapter = createRealCardAdapter();
+  if (!isEnvSet(process.env.RAIN_API_KEY) || !isEnvSet(process.env.RAIN_USER_ID)) {
+    throw new Error(
+      "Rain is not configured — set RAIN_API_KEY and RAIN_USER_ID for live scoped cards.",
+    );
   }
+  console.log("[adapters] Live Rain card adapter");
+  _cardAdapter = createRealCardAdapter();
   return _cardAdapter;
 }
 
 export function getDiscoveryAdapter(): DiscoveryAdapter {
   if (_discoveryAdapter) return _discoveryAdapter;
-  if (useMocks || !process.env.SHOPIFY_STORE_DOMAIN) {
-    console.log("[adapters] Using mock discovery adapter");
-    _discoveryAdapter = createMockDiscoveryAdapter();
-  } else {
-    console.log("[adapters] Using REAL Shopify UCP Catalog discovery adapter");
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { createRealDiscoveryAdapter } = require("./discovery");
-    _discoveryAdapter = createRealDiscoveryAdapter();
-  }
+  // Always live: UCP global catalog needs no credentials.
+  console.log("[adapters] Live Shopify product search (UCP global catalog)");
+  _discoveryAdapter = createRealDiscoveryAdapter();
   return _discoveryAdapter;
 }
 
 export function getCheckoutAdapter(): CheckoutAdapter {
   if (_checkoutAdapter) return _checkoutAdapter;
-  if (useMocks || !process.env.SHOPIFY_ADMIN_TOKEN) {
-    console.log("[adapters] Using mock checkout adapter");
-    _checkoutAdapter = createMockCheckoutAdapter();
-  } else {
-    console.log("[adapters] Using REAL Shopify Admin API checkout adapter");
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { createRealCheckoutAdapter } = require("./checkout");
-    _checkoutAdapter = createRealCheckoutAdapter();
-  }
+  console.log("[adapters] Live Shopify checkout adapter");
+  _checkoutAdapter = createRealCheckoutAdapter();
   return _checkoutAdapter;
 }
 
 export function getAgentAdapter(): AgentAdapter {
   if (_agentAdapter) return _agentAdapter;
-  // TODO: swap in real Anthropic agent when ANTHROPIC_API_KEY is set
-  _agentAdapter = createMockAgentAdapter();
+  if (!isEnvSet(process.env.OPENAI_API_KEY)) {
+    throw new Error(
+      "OPENAI_API_KEY is not configured — required for the live agent intent parser.",
+    );
+  }
+  console.log("[adapters] Live OpenAI intent parser");
+  _agentAdapter = createOpenAIAgentAdapter();
   return _agentAdapter;
 }
