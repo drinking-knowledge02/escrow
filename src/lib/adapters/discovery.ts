@@ -43,60 +43,57 @@ export function createMockDiscoveryAdapter(): DiscoveryAdapter {
 }
 
 // ---------------------------------------------------------------------------
-// Real — Shopify UCP Catalog MCP (JSON-RPC over HTTP)
+// Real — Shopify UCP Catalog MCP (JSON-RPC 2.0 over HTTP POST)
 //
-// Endpoint: POST https://{SHOPIFY_STORE_DOMAIN}/api/ucp/mcp
-// No auth token needed. Agent identity is declared via the agent profile URL.
+// Endpoint:  POST https://{SHOPIFY_STORE_DOMAIN}/api/ucp/mcp
+// Headers:   Content-Type: application/json  (no auth header needed)
+// Agent identity goes inside arguments.meta, NOT as a header.
 //
-// JSON-RPC 2.0 body:
+// Confirmed request shape:
 // {
 //   "jsonrpc": "2.0",
-//   "id": <string>,
 //   "method": "tools/call",
+//   "id": 1,
 //   "params": {
 //     "name": "search_catalog",
 //     "arguments": {
-//       // TODO: confirm exact top-level wrapper field name from Shopify docs.
-//       // The prompt spec calls it a "UCP catalog wrapper object". Likely shape:
+//       "meta": { "ucp-agent": { "profile": "<agent-profile-url>" } },
 //       "catalog": {
-//         "query": <string>,
-//         "filters": { "price": { "max": <number> } },  // TODO: confirm filter shape
-//         "limit": 4
+//         "query": "<string>",
+//         "filters": { "price": { "max": <cents> }, "available": true },
+//         "context": { "address_country": "US" },
+//         "pagination": { "limit": 5 }
 //       }
 //     }
 //   }
 // }
 //
-// Agent profile is declared via:
-//   Header: "Shopify-Agent-Profile-Url: <SHOPIFY_AGENT_PROFILE_URL>"
-//   TODO: confirm exact header name from Shopify docs (may be X-Shopify-Agent-Profile,
-//         or passed as a body field — not confirmed in available docs).
+// Price is in CENTS — $130.00 = 13000. Convert budget (dollars) before sending.
+// The agent profile URL can be SHOPIFY_AGENT_PROFILE_URL or the Shopify example URL.
 //
-// Response shape (assumed from MCP tool conventions):
-// {
-//   "jsonrpc": "2.0",
-//   "id": <string>,
-//   "result": {
-//     "content": [{ "type": "text", "text": "<JSON string with products array>" }]
-//   }
-// }
-// TODO: confirm whether result.content[0].text is JSON or the array is nested differently.
+// Response shape: MCP content array — result.content[0].text is a JSON string.
+// TODO: confirm exact field names in each product object returned by search_catalog.
 // ---------------------------------------------------------------------------
+
+// Shopify's public example agent profile — works without hosting anything.
+const DEFAULT_AGENT_PROFILE =
+  "https://shopify.dev/ucp/agent-profiles/examples/2026-04-08/valid-with-capabilities.json";
 
 interface UCPProduct {
   id: string;
   title: string;
-  // TODO: confirm exact field names returned by search_catalog
   description?: string;
+  // TODO: confirm exact price field shape in search_catalog response
   priceRange?: {
     minVariantPrice?: { amount: string; currencyCode: string };
   };
-  // TODO: confirm image field shape
   featuredImage?: { url: string; altText?: string };
   variants?: { edges: Array<{ node: { id: string; price: { amount: string } } }> };
 }
 
 function mapUCPProduct(p: UCPProduct, index: number): Product {
+  // Price comes back in dollars as a string (e.g. "119.00") from priceRange,
+  // or cents from the filters — use priceRange.minVariantPrice as canonical.
   const priceStr =
     p.priceRange?.minVariantPrice?.amount ??
     p.variants?.edges?.[0]?.node?.price?.amount ??
@@ -106,7 +103,7 @@ function mapUCPProduct(p: UCPProduct, index: number): Product {
   return {
     id: p.id,
     name: p.title,
-    meta: p.description?.slice(0, 50) ?? "",
+    meta: p.description?.slice(0, 60) ?? "",
     price,
     thumbSeed: `ucp-${index}`,
     category: "general",
@@ -115,50 +112,46 @@ function mapUCPProduct(p: UCPProduct, index: number): Product {
 
 export function createRealDiscoveryAdapter(): DiscoveryAdapter {
   const storeDomain = process.env.SHOPIFY_STORE_DOMAIN;
-  const agentProfileUrl = process.env.SHOPIFY_AGENT_PROFILE_URL;
+  const agentProfileUrl =
+    process.env.SHOPIFY_AGENT_PROFILE_URL || DEFAULT_AGENT_PROFILE;
 
   if (!storeDomain) {
     throw new Error("SHOPIFY_STORE_DOMAIN must be set for real discovery adapter");
   }
 
-  // TODO: confirm exact endpoint path from Shopify docs — assumed /api/ucp/mcp
   const endpoint = `https://${storeDomain}/api/ucp/mcp`;
 
   return {
     async searchProducts(query: string, budget: number): Promise<Product[]> {
-      const requestId = `latch-${Date.now()}`;
+      // Budget arrives in dollars; UCP price filter expects cents.
+      const budgetCents = Math.round(budget * 100);
 
-      // TODO: confirm exact wrapper field name ("catalog" assumed) and filter shape.
-      // Also confirm whether limit is a top-level arg or inside catalog.
       const body = {
         jsonrpc: "2.0",
-        id: requestId,
         method: "tools/call",
+        id: 1,
         params: {
           name: "search_catalog",
           arguments: {
-            // TODO: wrapper field name unconfirmed — "catalog" is assumed
+            meta: {
+              "ucp-agent": { profile: agentProfileUrl },
+            },
             catalog: {
               query,
               filters: {
-                // TODO: confirm price filter shape
-                price: { max: budget },
+                price: { max: budgetCents },
+                available: true,
               },
-              limit: 4,
+              context: { address_country: "US" },
+              pagination: { limit: 5 },
             },
           },
         },
       };
 
-      const headers: Record<string, string> = {
-        "Content-Type": "application/json",
-        // TODO: confirm exact header name for agent profile
-        ...(agentProfileUrl ? { "Shopify-Agent-Profile-Url": agentProfileUrl } : {}),
-      };
-
       const res = await fetch(endpoint, {
         method: "POST",
-        headers,
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
 
@@ -170,11 +163,9 @@ export function createRealDiscoveryAdapter(): DiscoveryAdapter {
 
       const json = await res.json() as {
         jsonrpc: string;
-        id: string;
+        id: number;
         result?: {
-          // TODO: confirm whether result is content array or products directly
           content?: Array<{ type: string; text: string }>;
-          products?: UCPProduct[];
         };
         error?: { code: number; message: string };
       };
@@ -183,26 +174,17 @@ export function createRealDiscoveryAdapter(): DiscoveryAdapter {
         throw new Error(`UCP Catalog MCP error ${json.error.code}: ${json.error.message}`);
       }
 
-      // TODO: confirm exact result shape — content[0].text assumed to be JSON
-      let products: UCPProduct[] = [];
-      if (json.result?.content?.[0]?.text) {
-        const parsed = JSON.parse(json.result.content[0].text);
-        // TODO: confirm whether parsed is array or { products: [] }
-        products = Array.isArray(parsed) ? parsed : (parsed.products ?? []);
-      } else if (Array.isArray(json.result?.products)) {
-        products = json.result.products;
-      }
+      // MCP tools return content as an array; the first text item is a JSON string.
+      const text = json.result?.content?.[0]?.text;
+      if (!text) return [];
 
-      return products
-        .filter((p) => {
-          const price = parseFloat(
-            p.priceRange?.minVariantPrice?.amount ??
-            p.variants?.edges?.[0]?.node?.price?.amount ?? "0"
-          );
-          return price <= budget;
-        })
-        .slice(0, 4)
-        .map(mapUCPProduct);
+      const parsed = JSON.parse(text);
+      // TODO: confirm whether parsed is a bare array or { products: [] }
+      const products: UCPProduct[] = Array.isArray(parsed)
+        ? parsed
+        : (parsed.products ?? []);
+
+      return products.slice(0, 4).map(mapUCPProduct);
     },
   };
 }
