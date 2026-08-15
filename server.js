@@ -12,9 +12,11 @@ app.use(bodyParser.json());
 
 // Import routes
 const escrowRoutes = require('./routes/escrow');
+const contractRoutes = require('./routes/contract');
 
 // Use routes
 app.use('/api/escrow', escrowRoutes);
+app.use('/api/contract', contractRoutes);
 
 // Health check
 app.get('/health', (req, res) => {
