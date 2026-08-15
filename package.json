@@ -1,0 +1,23 @@
+{
+  "name": "escrow",
+  "version": "1.0.0",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": ["escrow", "commerce", "shopify"],
+  "author": "",
+  "license": "ISC",
+  "description": "Escrow commerce system with Shopify integration",
+  "dependencies": {
+    "body-parser": "^2.3.0",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "openai": "^6.49.0",
+    "pg": "^8.23.0",
+    "shopify-api-node": "^3.15.0"
+  }
+}
